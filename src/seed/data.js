@@ -23,14 +23,14 @@ const pickMany = (arr, n) => {
 };
 
 const INSTITUTIONS = [
-  { name: "Lindholm Institute of Technology", country: "Sweden", type: "University" },
-  { name: "Kestrel State University", country: "USA", type: "University" },
-  { name: "Aravali Research Centre", country: "India", type: "Research Lab" },
-  { name: "Meridian Polytechnic", country: "Singapore", type: "University" },
-  { name: "Northgate University", country: "Canada", type: "University" },
-  { name: "Solvik Applied Sciences", country: "Norway", type: "Research Lab" },
-  { name: "Cobalt Research Institute", country: "Germany", type: "Research Lab" },
-  { name: "Bayline University", country: "Australia", type: "University" },
+  { key: "inst1", name: "Lindholm Institute of Technology", country: "Sweden", type: "University" },
+  { key: "inst2", name: "Kestrel State University", country: "USA", type: "University" },
+  { key: "inst3", name: "Aravali Research Centre", country: "India", type: "Research Lab" },
+  { key: "inst4", name: "Meridian Polytechnic", country: "Singapore", type: "University" },
+  { key: "inst5", name: "Northgate University", country: "Canada", type: "University" },
+  { key: "inst6", name: "Solvik Applied Sciences", country: "Norway", type: "Research Lab" },
+  { key: "inst7", name: "Cobalt Research Institute", country: "Germany", type: "Research Lab" },
+  { key: "inst8", name: "Bayline University", country: "Australia", type: "University" },
 ];
 
 const FIRST_NAMES = [
@@ -151,6 +151,8 @@ function buildCitations(publications, count) {
 const authors = buildAuthors(30);
 const publications = buildPublications(60, authors);
 const citations = buildCitations(publications, 45);
-const institutions = INSTITUTIONS.map((inst, i) => ({ key: `i${i + 1}`, ...inst }));
-
+const institutions = INSTITUTIONS.map((inst, i) => ({
+  ...inst,
+  key: `i${i + 1}`,
+}));
 module.exports = { institutions, authors, publications, citations };

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scholarzzone Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <header>
+        <h1>Scholarzzone</h1>
+        <p>Research Collaboration & Analytics Dashboard</p>
+    </header>
+
+    <main>
+
+        <section class="cards">
+            <div class="card">
+                <h2>MongoDB</h2>
+                <p>Publications, Authors & Institutions</p>
+            </div>
+
+            <div class="card">
+                <h2>Neo4j</h2>
+                <p>Research Collaboration Graph</p>
+            </div>
+
+            <div class="card">
+                <h2>Analytics</h2>
+                <p>Research Data Analysis</p>
+            </div>
+
+            <div class="card">
+                <h2>Graph Algorithms</h2>
+                <p>PageRank, Communities & Shortest Path</p>
+            </div>
+        </section>
+
+        <section class="panel">
+    <h2>Research Collaboration Graph</h2>
+
+    <p>
+        Click "Load Graph" to view authors and their collaboration relationships.
+    </p>
+
+    <button onclick="loadGraph()">Load Graph</button>
+
+    <div id="graph">
+        Click "Load Graph" to display the collaboration network.
+    </div>
+</section>
+<section class="panel">
+    <h2>MongoDB Analytics</h2>
+
+    <p>Select an aggregation query to analyze the research data.</p>
+
+    <div class="analytics-buttons">
+        <button onclick="loadAnalytics('publications-per-year')">
+            Publications Per Year
+        </button>
+
+        <button onclick="loadAnalytics('top-keywords')">
+            Top Keywords
+        </button>
+
+        <button onclick="loadAnalytics('publications-per-venue')">
+            Publications Per Venue
+        </button>
+
+        <button onclick="loadAnalytics('avg-authors-per-venue')">
+            Average Authors Per Venue
+        </button>
+
+        <button onclick="loadAnalytics('prolific-authors')">
+            Prolific Authors
+        </button>
+    </div>
+
+    <div id="analyticsResult">
+        Select an analytics option to view the results.
+    </div>
+</section>
+    </main>
+
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

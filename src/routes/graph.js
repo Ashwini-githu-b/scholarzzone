@@ -28,7 +28,36 @@ async function enrichWithNames(authorIds) {
   authors.forEach((a) => (byId[a._id.toString()] = a));
   return byId;
 }
+router.get("/network", async (req, res) => {
+    try {
+        const { nodeIds, edges } = await loadCoauthorGraph();
+        const byId = await enrichWithNames(nodeIds);
 
+        const nodes = nodeIds.map((id) => ({
+            id,
+            name: byId[id]?.name || "Unknown"
+        }));
+
+        const cleanEdges = edges.map((edge) => ({
+            a: edge.a,
+            b: edge.b,
+            weight: edge.weight?.toNumber
+                ? edge.weight.toNumber()
+                : Number(edge.weight)
+        }));
+
+        res.json({
+            nodes,
+            edges: cleanEdges
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Failed to load graph"
+        });
+    }
+});
 // GET /api/graph/pagerank — author influence ranking
 router.get("/pagerank", async (req, res) => {
   const { nodeIds, edges } = await loadCoauthorGraph();
