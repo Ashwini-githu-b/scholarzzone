@@ -8,25 +8,74 @@ const { requireAuth } = require("./auth");
 const router = express.Router();
 
 // CREATE
+
 router.post("/", requireAuth, async (req, res) => {
   try {
     const author = await Author.create(req.body);
 
-    await runCypher(`MERGE (a:Author {authorId: $authorId}) SET a.name = $name`, {
-      authorId: author._id.toString(),
-      name: author.name,
-    });
     await runCypher(
-      `MATCH (a:Author {authorId: $authorId}), (i:Institution {institutionId: $institutionId})
+      `MERGE (a:Author {authorId: $authorId})
+       SET a.name = $name`,
+      {
+        authorId: author._id.toString(),
+        name: author.name,
+      }
+    );
+
+    await runCypher(
+      `MATCH (a:Author {authorId: $authorId}),
+             (i:Institution {institutionId: $institutionId})
        MERGE (a)-[:AFFILIATED_WITH]->(i)`,
-      { authorId: author._id.toString(), institutionId: author.institutionId.toString() }
+      {
+        authorId: author._id.toString(),
+        institutionId: author.institutionId.toString(),
+      }
     );
 
     res.status(201).json(author);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("Create author failed:", err);
+
+    // Duplicate email or another unique field
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern || {})[0];
+
+      if (field === "email") {
+        return res.status(409).json({
+          error: "This email address is already registered. Please use a different email."
+        });
+      }
+
+      return res.status(409).json({
+        error: "A record with this information already exists."
+      });
+    }
+
+    // Missing or invalid field
+    if (err.name === "ValidationError") {
+      const messages = Object.values(err.errors || {})
+        .map(item => item.message);
+
+      return res.status(400).json({
+        error: messages.length
+          ? messages.join(". ")
+          : "Please check the required fields and try again."
+      });
+    }
+
+    // Invalid MongoDB record ID
+    if (err.name === "CastError") {
+      return res.status(400).json({
+        error: "One of the selected records is invalid. Please check your selection."
+      });
+    }
+
+    res.status(500).json({
+      error: "Unable to create the author right now. Please try again."
+    });
   }
 });
+
 
 // READ (list)
 router.get("/", async (req, res) => {
@@ -75,35 +124,44 @@ router.put("/:id", requireAuth, async (req, res) => {
  * Both writes are wrapped in a session so they commit or roll back together.
  * Requires MongoDB running as a replica set (Atlas clusters are by default).
  */
-router.delete("/:id", requireAuth, async (req, res) => {
-  const session = await mongoose.startSession();
-  try {
-    session.startTransaction();
 
-    const author = await Author.findByIdAndDelete(req.params.id).session(session);
+/**
+ * DELETE
+ * Works with standalone MongoDB.
+ * Removes the author, removes their references from publications,
+ * and deletes the corresponding Neo4j author node.
+ */
+router.delete("/:id", requireAuth, async (req, res) => {
+  try {
+    const author = await Author.findById(req.params.id);
+
     if (!author) {
-      await session.abortTransaction();
       return res.status(404).json({ error: "Author not found" });
     }
 
+    // Remove this author from publication authorIds arrays first.
     await Publication.updateMany(
       { authorIds: author._id },
       { $pull: { authorIds: author._id } }
-    ).session(session);
+    );
 
-    await session.commitTransaction();
+    // Delete the author document from MongoDB.
+    await Author.findByIdAndDelete(author._id);
 
-    await runCypher(`MATCH (a:Author {authorId: $authorId}) DETACH DELETE a`, {
-      authorId: author._id.toString(),
-    });
+    // Remove the corresponding author node and its relationships.
+    await runCypher(
+      `MATCH (a:Author {authorId: $authorId}) DETACH DELETE a`,
+      { authorId: author._id.toString() }
+    );
 
     res.json({ deleted: true, id: req.params.id });
   } catch (err) {
-    await session.abortTransaction();
-    res.status(500).json({ error: err.message });
-  } finally {
-    session.endSession();
+    console.error("Author delete failed:", err);
+    res.status(500).json({
+      error: "Could not delete the author. Please try again."
+    });
   }
 });
+
 
 module.exports = router;

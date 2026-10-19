@@ -5,18 +5,63 @@ const { requireAuth } = require("./auth");
 
 const router = express.Router();
 
+
 router.post("/", requireAuth, async (req, res) => {
   try {
     const inst = await Institution.create(req.body);
-    await runCypher(`MERGE (i:Institution {institutionId: $id}) SET i.name = $name`, {
-      id: inst._id.toString(),
-      name: inst.name,
-    });
+
+    await runCypher(
+      `MERGE (i:Institution {institutionId: $id})
+       SET i.name = $name`,
+      {
+        id: inst._id.toString(),
+        name: inst.name,
+      }
+    );
+
     res.status(201).json(inst);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("Create institution failed:", err);
+
+    // Duplicate institution name or another unique field
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern || {})[0];
+
+      if (field === "name") {
+        return res.status(409).json({
+          error: "This institution name already exists. Please use a different name."
+        });
+      }
+
+      return res.status(409).json({
+        error: "A record with this information already exists."
+      });
+    }
+
+    // Missing or invalid fields
+    if (err.name === "ValidationError") {
+      const messages = Object.values(err.errors || {})
+        .map(item => item.message);
+
+      return res.status(400).json({
+        error: messages.length
+          ? messages.join(". ")
+          : "Please check the required fields and try again."
+      });
+    }
+
+    if (err.name === "CastError") {
+      return res.status(400).json({
+        error: "One of the selected values is invalid. Please check your input."
+      });
+    }
+
+    res.status(500).json({
+      error: "Unable to create the institution right now. Please try again."
+    });
   }
 });
+
 
 router.get("/", async (req, res) => {
   const docs = await Institution.find().sort({ name: 1 });

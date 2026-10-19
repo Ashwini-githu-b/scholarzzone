@@ -155,3 +155,167 @@ button:hover {
     white-space: pre-wrap;
     word-wrap: break-word;
 }
+
+/* ===== General UI Improvements ===== */
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    line-height: 1.6;
+}
+
+main {
+    padding-bottom: 40px;
+}
+
+/* ===== Cards and Panels ===== */
+
+.card,
+.panel {
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.panel {
+    border: 1px solid #e8ecf2;
+}
+
+.panel h2 {
+    color: #1f3c88;
+}
+
+/* ===== Buttons ===== */
+
+button {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.2s ease, transform 0.15s ease;
+}
+
+button:hover {
+    transform: translateY(-1px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 3px solid #8eb5ff;
+    outline-offset: 2px;
+}
+
+/* ===== Form Controls ===== */
+
+input,
+select,
+textarea {
+    max-width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #cbd3df;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #222;
+    background: white;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: #1f3c88;
+    outline: none;
+}
+
+label {
+    display: inline-block;
+    margin: 8px 0 5px;
+    font-weight: 600;
+    color: #333;
+}
+
+/* ===== CRUD Messages ===== */
+
+#crudMessage {
+    margin-top: 15px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    overflow-wrap: anywhere;
+}
+
+#crudFormContainer,
+#crudRecords {
+    margin-top: 20px;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* ===== Graph and Analytics ===== */
+
+#graph {
+    min-width: 0;
+}
+
+#analyticsResult {
+    line-height: 1.7;
+}
+
+/* ===== Responsive Layout ===== */
+
+@media (max-width: 800px) {
+    main {
+        width: 94%;
+    }
+
+    .cards {
+        gap: 14px;
+    }
+
+    .panel {
+        padding: 20px;
+    }
+
+    #graph {
+        height: 400px;
+    }
+}
+
+@media (max-width: 500px) {
+    main {
+        width: 94%;
+        margin-top: 18px;
+    }
+
+    .card,
+    .panel {
+        padding: 16px;
+    }
+
+    .cards {
+        grid-template-columns: 1fr;
+    }
+
+    #graph {
+        height: 320px;
+    }
+
+    button {
+        margin: 5px 5px 8px 0;
+    }
+
+    input,
+    select,
+    textarea {
+        width: 100%;
+    }
+}

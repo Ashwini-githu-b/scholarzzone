@@ -7,6 +7,7 @@ const router = express.Router();
 
 // CREATE — writes the document to MongoDB, then mirrors a thin :Paper node
 // and its AUTHORED edges into Neo4j using the same _id as authorId/paperId.
+
 router.post("/", requireAuth, async (req, res) => {
   try {
     const pub = await Publication.create(req.body);
@@ -14,19 +15,58 @@ router.post("/", requireAuth, async (req, res) => {
     await runCypher(
       `MERGE (p:Paper {paperId: $paperId})
        SET p.title = $title, p.year = $year`,
-      { paperId: pub._id.toString(), title: pub.title, year: pub.year }
+      {
+        paperId: pub._id.toString(),
+        title: pub.title,
+        year: pub.year,
+      }
     );
+
     for (const authorId of pub.authorIds) {
       await runCypher(
-        `MATCH (a:Author {authorId: $authorId}), (p:Paper {paperId: $paperId})
+        `MATCH (a:Author {authorId: $authorId}),
+               (p:Paper {paperId: $paperId})
          MERGE (a)-[:AUTHORED]->(p)`,
-        { authorId: authorId.toString(), paperId: pub._id.toString() }
+        {
+          authorId: authorId.toString(),
+          paperId: pub._id.toString(),
+        }
       );
     }
 
     res.status(201).json(pub);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("Create publication failed:", err);
+
+    // Duplicate record
+    if (err.code === 11000) {
+      return res.status(409).json({
+        error: "A publication with this information already exists."
+      });
+    }
+
+    // Missing or invalid fields
+    if (err.name === "ValidationError") {
+      const messages = Object.values(err.errors || {})
+        .map(item => item.message);
+
+      return res.status(400).json({
+        error: messages.length
+          ? messages.join(". ")
+          : "Please check the required publication fields."
+      });
+    }
+
+    // Invalid author ID or another MongoDB ID
+    if (err.name === "CastError") {
+      return res.status(400).json({
+        error: "An author or record selection is invalid. Please check your selections."
+      });
+    }
+
+    res.status(500).json({
+      error: "Unable to create the publication right now. Please try again."
+    });
   }
 });
 

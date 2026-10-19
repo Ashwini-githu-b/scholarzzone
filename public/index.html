@@ -82,7 +82,33 @@
         Select an analytics option to view the results.
     </div>
 </section>
+        <!-- MongoDB CRUD Management -->
+        <section class="panel" id="crudSection">
+            <h2>Research Data Management</h2>
+            <p>Manage authors, institutions, and publications.</p>
+
+            <label for="crudEntity">Select record type:</label>
+            <select id="crudEntity">
+                <option value="authors">Authors</option>
+                <option value="institutions">Institutions</option>
+                <option value="publications">Publications</option>
+            </select>
+
+            <button type="button" onclick="loadRecords()">
+                View Records
+            </button>
+            <button type="button" onclick="renderCrudForm()">Add New Record</button>
+
+            <div id="crudMessage" role="status" aria-live="polite"></div>
+
+            <div id="crudFormContainer"></div>
+
+            <div id="crudRecords">
+                Select a record type and click "View Records".
+            </div>
+        </section>
     </main>
+
 
 <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 <script src="app.js"></script>
