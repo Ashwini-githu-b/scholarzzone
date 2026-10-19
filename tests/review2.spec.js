@@ -21,9 +21,10 @@ async function cypher(query, params = {}) {
 async function snapshot() {
   const mongo = {};
   for (const collection of await mongoose.connection.db.listCollections().toArray()) {
+    if (collection.name.startsWith('_graph_sync_')) continue; // operational queue/lease metadata
     mongo[collection.name] = await mongoose.connection.db.collection(collection.name).find().sort({ _id: 1 }).toArray();
   }
-  const nodes = await cypher('MATCH (n) RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props ORDER BY id');
+  const nodes = await cypher('MATCH (n) WHERE NOT n:_GraphSyncCheckpoint RETURN elementId(n) AS id, labels(n) AS labels, properties(n) AS props ORDER BY id');
   const edges = await cypher('MATCH (a)-[r]->(b) RETURN elementId(r) AS id, elementId(a) AS a, elementId(b) AS b, type(r) AS type, properties(r) AS props ORDER BY id');
   return JSON.parse(JSON.stringify({ mongo, nodes, edges }));
 }
@@ -301,6 +302,26 @@ test('API rejects invalid IDs and missing references without crashing', async ({
   await api(request, 'post', 'publications', { title: 'Invalid', abstract: 'Invalid', year: 2026, venue: 'Test', authorIds: ['000000000000000000000000'] }, 400);
   await api(request, 'delete', 'institutions/'+fixtures.institutionA._id, undefined, 409);
   expect((await api(request, 'get', 'health')).status).toBe('ok');
+});
+
+test('pending synchronization response clears the form and warns against duplicate submission', async ({ page }) => {
+  await login(page);
+  await selectEntity(page, 'institutions');
+  let writes = 0;
+  await page.route('**/api/institutions', route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    writes++;
+    return route.fulfill({ status: 202, json: { syncPending: true,
+      message: 'Saved in MongoDB. Graph synchronization is pending and will retry automatically. Do not submit again.' } });
+  });
+  await page.getByRole('button', { name: 'Add New Record', exact: true }).click();
+  await page.locator('#name').fill('Mock pending record');
+  await page.locator('#country').fill('India');
+  await page.locator('#type').selectOption('University');
+  await page.getByRole('button', { name: 'Add Record', exact: true }).click();
+  await expect(page.locator('#crudMessage')).toContainText('Do not submit again.');
+  await expect(page.locator('#crudFormContainer')).toBeEmpty();
+  expect(writes).toBe(1);
 });
 
 test('UI deletes only test records, with author reference cleanup in MongoDB and Neo4j', async ({ page, request }) => {

@@ -2,6 +2,7 @@ const { defineConfig } = require('@playwright/test');
 const fs = require('node:fs');
 module.exports = defineConfig({
   testDir: './tests',
+  testMatch: '**/*.spec.js',
   fullyParallel: false,
   workers: 1,
   timeout: 45000,

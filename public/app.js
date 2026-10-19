@@ -619,7 +619,7 @@ async function buildCrudForm(record = null) {
             const method = record ? "PUT" : "POST";
             const url = record ? `${endpoint}/${record._id}` : endpoint;
 
-            await crudRequest(url, {
+            const saved = await crudRequest(url, {
                 method,
                 body: JSON.stringify(payload)
             });
@@ -631,6 +631,7 @@ async function buildCrudForm(record = null) {
             );
 
             await loadRecords();
+            if (saved.syncPending) showCrudMessage(saved.message, true);
         } catch (error) {
             showCrudMessage(error.message, true);
         } finally {
@@ -731,12 +732,13 @@ async function deleteRecord(id) {
     }
 
     try {
-        await crudRequest(`${crudConfig[type].endpoint}/${id}`, {
+        const saved = await crudRequest(`${crudConfig[type].endpoint}/${id}`, {
             method: "DELETE"
         });
 
         showCrudMessage(`${crudConfig[type].label} deleted successfully.`);
         await loadRecords();
+        if (saved.syncPending) showCrudMessage(saved.message, true);
     } catch (error) {
         showCrudMessage(error.message, true);
     }

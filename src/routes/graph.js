@@ -5,6 +5,7 @@ const Author = require("../models/Author");
 const { pageRank, labelPropagation, bfsShortestPath } = require("../utils/graphAlgorithms");
 
 const router = express.Router();
+router.use(require("../services/graphSync").requireCurrentGraph);
 
 // Pulls the co-authorship projection out of Neo4j: just author ids and the
 // COAUTHOR edges between them (weighted by shared papers). This is the

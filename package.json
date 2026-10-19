@@ -8,8 +8,9 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "seed": "node src/seed/seed.js",
-    "test": "playwright test",
-    "test:regression": "playwright test"
+    "test": "node --test tests/backend.test.cjs && playwright test",
+    "test:regression": "playwright test",
+    "test:backend": "node --test tests/backend.test.cjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
