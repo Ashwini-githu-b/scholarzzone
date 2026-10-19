@@ -114,3 +114,64 @@ src/
   neo4j/        schema.cypher (constraints & indexes)
   server.js     App entry point
 ```
+
+
+## Review 2 frontend and regression tests
+
+The Express server serves the dashboard and API together. Run `npm ci`, then
+`npm run dev` from the repository root. MongoDB must run as a replica set for
+transactional author deletion; Neo4j Community is sufficient. Keep your existing
+`.env` and databases. The graph library is served locally from the locked npm
+dependency, so the dashboard needs no external CDN access.
+
+Run `npm test` (or `npm run test:regression`) with the configured databases
+available. The suite runs backend integration checks in a fresh, randomly named MongoDB
+namespace, then launches a separate server on port 4200 for Chromium checks.
+It uses `/usr/bin/chromium` when available; otherwise install Playwright's browser
+with `npx playwright install chromium`. `CHROMIUM_PATH` can select another binary.
+
+Tests require existing demo data for analytics and collaboration checks. They
+create uniquely named temporary records, remove only those records, and compare
+all original application MongoDB documents and Neo4j nodes/relationships before
+and after (operational outbox/lease/checkpoint metadata is excluded).
+Run against an idle development database so concurrent writes do not invalidate
+that preservation check. Tests never seed or reset a database. Credentials are
+read from the existing environment or `.env`; tokens, traces and screenshots are
+not saved. Results are written to ignored `test-results/results.json`.
+
+Run `npm audit` to check dependencies. The `qs` and `proxy-addr` overrides select
+patched releases still compatible with Express 4; keep them until Express's own
+dependency constraints select patched versions without overrides.
+
+
+### Recoverable MongoDB–Neo4j synchronization
+
+All author, institution, publication and citation mutations commit their MongoDB
+changes and an ordered recovery event in one transaction. Author deletion also
+removes references from publications and research projects in that transaction;
+publication deletion removes MongoDB citation references. MongoDB therefore
+requires a replica set for every write, not just author deletion.
+
+Each event is projected into Neo4j in one transaction. An ordered durable outbox,
+a shared worker lease and a fenced Neo4j checkpoint prevent partial projections,
+lost updates and stale replay across processes. The worker retries every two
+seconds and drains saved events on startup. A failed projection leaves its event
+in `_graph_sync_events`; do not delete events or reset the sequence/checkpoint.
+Initialization creates the `graph_sync_source_unique` Neo4j constraint, so the
+application database user needs permission to create it on first startup.
+
+Normally all response bodies/status codes are unchanged. If MongoDB committed
+but the graph is pending, writes return **202** with `syncPending: true` and a
+message telling the caller not to submit again. The frontend clears the saved
+form and shows that message. Graph and citation reads return **503** while events
+are pending instead of claiming stale graph data is current. This is recoverable
+eventual consistency, not an atomic distributed transaction. Startup requires
+both databases. A permanently missing projection or schema/access problem needs
+operator repair; events are retained rather than silently discarded.
+
+Existing citation POST/GET/DELETE endpoints remain available and now synchronize
+MongoDB Citation documents as well as Neo4j edges. The additive `PUT /api/citations`
+endpoint takes `fromPaperId`, `toPaperId`, `newFromPaperId`, and `newToPaperId` to
+replace a citation managed by the API. Pre-existing graph-only citations remain
+readable/deletable; create the same edge with POST to register it in MongoDB
+before using PUT. No existing data migration or reseeding is performed.

@@ -14,3 +14,7 @@ FOR (i:Institution) REQUIRE i.institutionId IS UNIQUE;
 // Secondary index to speed up "papers published in year X" style traversals
 CREATE INDEX paper_year_index IF NOT EXISTS
 FOR (p:Paper) ON (p.year);
+
+// Serializes/fences durable graph projection updates across API workers.
+CREATE CONSTRAINT graph_sync_source_unique IF NOT EXISTS
+FOR (c:_GraphSyncCheckpoint) REQUIRE c.source IS UNIQUE;

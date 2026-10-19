@@ -23,7 +23,8 @@ function pageRank(nodeIds, edges, iterations = 25, damping = 0.85) {
 
   for (let it = 0; it < iterations; it++) {
     const next = {};
-    nodeIds.forEach((n) => (next[n] = (1 - damping) / nodeIds.length));
+    const dangling = nodeIds.reduce((sum, n) => sum + (adj[n].length ? 0 : ranks[n]), 0);
+    nodeIds.forEach((n) => (next[n] = (1 - damping + damping * dangling) / nodeIds.length));
     nodeIds.forEach((n) => {
       const outDeg = adj[n].length || 1;
       const share = ranks[n] / outDeg;
@@ -72,6 +73,7 @@ function bfsShortestPath(nodeIds, edges, start, end) {
     adj[e.b].push(e.a);
   });
 
+  if (!adj[start] || !adj[end]) return null;
   const visited = new Set([start]);
   const prev = {};
   const queue = [start];

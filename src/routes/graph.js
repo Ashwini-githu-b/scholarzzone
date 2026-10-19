@@ -1,9 +1,11 @@
+const asyncHandler = require("../middleware/asyncHandler");
 const express = require("express");
 const { runCypher } = require("../config/neo4j");
 const Author = require("../models/Author");
 const { pageRank, labelPropagation, bfsShortestPath } = require("../utils/graphAlgorithms");
 
 const router = express.Router();
+router.use(require("../services/graphSync").requireCurrentGraph);
 
 // Pulls the co-authorship projection out of Neo4j: just author ids and the
 // COAUTHOR edges between them (weighted by shared papers). This is the
@@ -28,9 +30,38 @@ async function enrichWithNames(authorIds) {
   authors.forEach((a) => (byId[a._id.toString()] = a));
   return byId;
 }
+router.get("/network", asyncHandler(async (req, res) => {
+    try {
+        const { nodeIds, edges } = await loadCoauthorGraph();
+        const byId = await enrichWithNames(nodeIds);
 
+        const nodes = nodeIds.map((id) => ({
+            id,
+            name: byId[id]?.name || "Unknown"
+        }));
+
+        const cleanEdges = edges.map((edge) => ({
+            a: edge.a,
+            b: edge.b,
+            weight: edge.weight?.toNumber
+                ? edge.weight.toNumber()
+                : Number(edge.weight)
+        }));
+
+        res.json({
+            nodes,
+            edges: cleanEdges
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: "Failed to load graph"
+        });
+    }
+}));
 // GET /api/graph/pagerank — author influence ranking
-router.get("/pagerank", async (req, res) => {
+router.get("/pagerank", asyncHandler(async (req, res) => {
   const { nodeIds, edges } = await loadCoauthorGraph();
   const ranks = pageRank(nodeIds, edges);
   const byId = await enrichWithNames(nodeIds);
@@ -45,10 +76,10 @@ router.get("/pagerank", async (req, res) => {
     }));
 
   res.json(ranked);
-});
+}));
 
 // GET /api/graph/communities — research cluster detection
-router.get("/communities", async (req, res) => {
+router.get("/communities", asyncHandler(async (req, res) => {
   const { nodeIds, edges } = await loadCoauthorGraph();
   const labels = labelPropagation(nodeIds, edges);
   const byId = await enrichWithNames(nodeIds);
@@ -60,10 +91,10 @@ router.get("/communities", async (req, res) => {
   });
 
   res.json(Object.values(groups).map((members, i) => ({ cluster: i + 1, members })));
-});
+}));
 
 // GET /api/graph/shortest-path?from=<authorId>&to=<authorId>
-router.get("/shortest-path", async (req, res) => {
+router.get("/shortest-path", asyncHandler(async (req, res) => {
   const { from, to } = req.query;
   if (!from || !to) return res.status(400).json({ error: "from and to are required" });
 
@@ -92,6 +123,6 @@ router.get("/shortest-path", async (req, res) => {
     hops: path.length - 1,
     path: path.map((id) => ({ authorId: id, name: byId[id]?.name || "Unknown" })),
   });
-});
+}));
 
 module.exports = router;
