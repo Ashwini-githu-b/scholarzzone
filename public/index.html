@@ -82,6 +82,17 @@
         Select an analytics option to view the results.
     </div>
 </section>
+        <section class="panel">
+            <h2>Graph Algorithms</h2>
+            <button onclick="loadPageRank()">PageRank</button>
+            <button onclick="loadCommunities()">Communities</button>
+            <label for="fromAuthor">From author ID</label>
+            <input id="fromAuthor" type="text">
+            <label for="toAuthor">To author ID</label>
+            <input id="toAuthor" type="text">
+            <button onclick="loadShortestPath()">Shortest Path</button>
+            <div id="result" role="status" aria-live="polite"></div>
+        </section>
         <!-- MongoDB CRUD Management -->
         <section class="panel" id="crudSection">
             <h2>Research Data Management</h2>
@@ -110,7 +121,7 @@
     </main>
 
 
-<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script src="/vendor/vis-network.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

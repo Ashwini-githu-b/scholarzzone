@@ -1,43 +1,38 @@
+const asyncHandler = require("../middleware/asyncHandler");
 const express = require("express");
 const Publication = require("../models/Publication");
-const { runCypher } = require("../config/neo4j");
 const { requireAuth } = require("./auth");
 
+const Author = require("../models/Author");
+const { syncPublicationGraph } = require("../services/publicationGraph");
 const router = express.Router();
+
+async function validateAuthors(ids) {
+  if (!Array.isArray(ids) || !ids.length) throw new Error("Select at least one author.");
+  const unique = [...new Set(ids.map(String))];
+  if (await Author.countDocuments({ _id: { $in: unique } }) !== unique.length) {
+    throw new Error("One or more selected authors no longer exist.");
+  }
+}
+
 
 // CREATE — writes the document to MongoDB, then mirrors a thin :Paper node
 // and its AUTHORED edges into Neo4j using the same _id as authorId/paperId.
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, asyncHandler(async (req, res) => {
   try {
+    await validateAuthors(req.body.authorIds);
     const pub = await Publication.create(req.body);
 
-    await runCypher(
-      `MERGE (p:Paper {paperId: $paperId})
-       SET p.title = $title, p.year = $year`,
-      {
-        paperId: pub._id.toString(),
-        title: pub.title,
-        year: pub.year,
-      }
-    );
-
-    for (const authorId of pub.authorIds) {
-      await runCypher(
-        `MATCH (a:Author {authorId: $authorId}),
-               (p:Paper {paperId: $paperId})
-         MERGE (a)-[:AUTHORED]->(p)`,
-        {
-          authorId: authorId.toString(),
-          paperId: pub._id.toString(),
-        }
-      );
-    }
+    await syncPublicationGraph(pub, pub._id.toString());
 
     res.status(201).json(pub);
   } catch (err) {
     console.error("Create publication failed:", err);
 
+    if (err.message === "Select at least one author." || err.message === "One or more selected authors no longer exist.") {
+      return res.status(400).json({ error: err.message });
+    }
     // Duplicate record
     if (err.code === 11000) {
       return res.status(409).json({
@@ -68,10 +63,10 @@ router.post("/", requireAuth, async (req, res) => {
       error: "Unable to create the publication right now. Please try again."
     });
   }
-});
+}));
 
 // READ (list, with pagination + optional search)
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { q, venue, year, page = 1, limit = 20 } = req.query;
   const filter = {};
   if (q) filter.$or = [{ title: new RegExp(q, "i") }, { keywords: new RegExp(q, "i") }];
@@ -85,46 +80,41 @@ router.get("/", async (req, res) => {
     .limit(Number(limit));
   const total = await Publication.countDocuments(filter);
   res.json({ total, page: Number(page), results: docs });
-});
+}));
 
 // READ (single)
-router.get("/:id", async (req, res) => {
+router.get("/:id", asyncHandler(async (req, res) => {
   const pub = await Publication.findById(req.params.id).populate("authorIds", "name email");
   if (!pub) return res.status(404).json({ error: "Publication not found" });
   res.json(pub);
-});
+}));
 
 // UPDATE
-router.put("/:id", requireAuth, async (req, res) => {
+router.put("/:id", requireAuth, asyncHandler(async (req, res) => {
   try {
+    if (req.body.authorIds !== undefined) await validateAuthors(req.body.authorIds);
     const pub = await Publication.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
     });
     if (!pub) return res.status(404).json({ error: "Publication not found" });
 
-    await runCypher(`MATCH (p:Paper {paperId: $paperId}) SET p.title = $title, p.year = $year`, {
-      paperId: pub._id.toString(),
-      title: pub.title,
-      year: pub.year,
-    });
+    await syncPublicationGraph(pub, pub._id.toString());
 
     res.json(pub);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
 // DELETE — removes the document and its Neo4j node + relationships.
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", requireAuth, asyncHandler(async (req, res) => {
   const pub = await Publication.findByIdAndDelete(req.params.id);
   if (!pub) return res.status(404).json({ error: "Publication not found" });
 
-  await runCypher(`MATCH (p:Paper {paperId: $paperId}) DETACH DELETE p`, {
-    paperId: pub._id.toString(),
-  });
+  await syncPublicationGraph(null, req.params.id);
 
   res.json({ deleted: true, id: req.params.id });
-});
+}));
 
 module.exports = router;

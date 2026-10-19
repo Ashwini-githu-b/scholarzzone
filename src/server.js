@@ -18,6 +18,9 @@ const graphRoutes = require("./routes/graph");
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.get("/vendor/vis-network.min.js", (req, res) => {
+  res.sendFile(require.resolve("vis-network/standalone/umd/vis-network.min.js"));
+});
 app.use(express.static(path.join(__dirname, "../public")));
 app.use(morgan("dev"));
 
@@ -33,7 +36,12 @@ app.use("/api/graph", graphRoutes);
 
 // Central error handler — keeps route handlers free of repetitive try/catch noise.
 app.use((err, req, res, next) => {
-  console.error(err);
+  if (err.name === "CastError" || err.name === "ValidationError" ||
+      (err instanceof SyntaxError && err.status === 400)) {
+    return res.status(400).json({ error: "Invalid request. Please check the supplied fields and IDs." });
+  }
+  if (err.code === 11000) return res.status(409).json({ error: "This record already exists." });
+  console.error(err.message);
   res.status(500).json({ error: "Internal server error" });
 });
 

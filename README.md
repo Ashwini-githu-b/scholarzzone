@@ -114,3 +114,29 @@ src/
   neo4j/        schema.cypher (constraints & indexes)
   server.js     App entry point
 ```
+
+
+## Review 2 frontend and regression tests
+
+The Express server serves the dashboard and API together. Run `npm ci`, then
+`npm run dev` from the repository root. MongoDB must run as a replica set for
+transactional author deletion; Neo4j Community is sufficient. Keep your existing
+`.env` and databases. The graph library is served locally from the locked npm
+dependency, so the dashboard needs no external CDN access.
+
+Run `npm test` (or `npm run test:regression`) with the configured databases
+available. The suite launches a separate server on port 4200 and uses Chromium.
+It uses `/usr/bin/chromium` when available; otherwise install Playwright's browser
+with `npx playwright install chromium`. `CHROMIUM_PATH` can select another binary.
+
+Tests require existing demo data for analytics and collaboration checks. They
+create uniquely named temporary records, remove only those records, and compare
+all original MongoDB documents and Neo4j nodes/relationships before and after.
+Run against an idle development database so concurrent writes do not invalidate
+that preservation check. Tests never seed or reset a database. Credentials are
+read from the existing environment or `.env`; tokens, traces and screenshots are
+not saved. Results are written to ignored `test-results/results.json`.
+
+Run `npm audit` to check dependencies. The `qs` and `proxy-addr` overrides select
+patched releases still compatible with Express 4; keep them until Express's own
+dependency constraints select patched versions without overrides.

@@ -4,7 +4,7 @@ async function connectMongo() {
   const uri = process.env.MONGO_URI || "mongodb://localhost:27017/scholarzzone";
   mongoose.set("strictQuery", true);
   await mongoose.connect(uri);
-  console.log(`[mongo] connected -> ${uri}`);
+  console.log("[mongo] connected");
   return mongoose.connection;
 }
 

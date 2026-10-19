@@ -72,6 +72,7 @@ function bfsShortestPath(nodeIds, edges, start, end) {
     adj[e.b].push(e.a);
   });
 
+  if (!adj[start] || !adj[end]) return null;
   const visited = new Set([start]);
   const prev = {};
   const queue = [start];

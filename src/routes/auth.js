@@ -1,3 +1,4 @@
+const asyncHandler = require("../middleware/asyncHandler");
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -14,7 +15,7 @@ async function getAdminHash() {
   return adminHash;
 }
 
-router.post("/login", async (req, res) => {
+router.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   const expectedEmail = process.env.ADMIN_EMAIL || "admin@scholarzzone.dev";
   const hash = await getAdminHash();
@@ -27,7 +28,7 @@ router.post("/login", async (req, res) => {
     expiresIn: "8h",
   });
   res.json({ token });
-});
+}));
 
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";

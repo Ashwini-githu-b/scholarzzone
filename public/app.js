@@ -1,16 +1,30 @@
+// Render API data as text: record names and titles are untrusted input.
+function showResults(container, title, data) {
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(data, null, 2);
+    container.replaceChildren(heading, pre);
+}
+
+async function readApi(url) {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to load results.");
+    return data;
+}
+
+let collaborationNetwork = null;
+
 async function loadPageRank() {
     const result = document.getElementById("result");
 
     result.innerHTML = "Loading PageRank...";
 
     try {
-        const response = await fetch("/api/graph/pagerank");
-        const data = await response.json();
+        const data = await readApi("/api/graph/pagerank");
 
-        result.innerHTML = `
-            <h3>PageRank Results</h3>
-            <pre>${JSON.stringify(data, null, 2)}</pre>
-        `;
+        showResults(result, "PageRank Results", data);
     } catch (error) {
         result.innerHTML = "Error loading PageRank.";
         console.error(error);
@@ -23,13 +37,9 @@ async function loadCommunities() {
     result.innerHTML = "Loading communities...";
 
     try {
-        const response = await fetch("/api/graph/communities");
-        const data = await response.json();
+        const data = await readApi("/api/graph/communities");
 
-        result.innerHTML = `
-            <h3>Community Detection Results</h3>
-            <pre>${JSON.stringify(data, null, 2)}</pre>
-        `;
+        showResults(result, "Community Detection Results", data);
     } catch (error) {
         result.innerHTML = "Error loading communities.";
         console.error(error);
@@ -49,16 +59,11 @@ async function loadShortestPath() {
     result.innerHTML = "Finding shortest path...";
 
     try {
-        const response = await fetch(
+        const data = await readApi(
             `/api/graph/shortest-path?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
         );
 
-        const data = await response.json();
-
-        result.innerHTML = `
-            <h3>Shortest Collaboration Path</h3>
-            <pre>${JSON.stringify(data, null, 2)}</pre>
-        `;
+        showResults(result, "Shortest Collaboration Path", data);
     } catch (error) {
         result.innerHTML = "Error finding shortest path.";
         console.error(error);
@@ -67,11 +72,12 @@ async function loadShortestPath() {
 async function loadGraph() {
     const graph = document.getElementById("graph");
 
-    graph.innerHTML = "Loading collaboration graph...";
+    if (collaborationNetwork) collaborationNetwork.destroy();
+    collaborationNetwork = null;
+    graph.textContent = "Loading collaboration graph...";
 
     try {
-        const response = await fetch("/api/graph/network");
-        const data = await response.json();
+        const data = await readApi("/api/graph/network");
 
         if (!data.nodes || data.nodes.length === 0) {
             graph.innerHTML = "No graph data available.";
@@ -85,7 +91,7 @@ async function loadGraph() {
             data.nodes.map((author) => ({
                 id: author.id,
                 label: author.name,
-                title: `Author: ${author.name}`,
+                title: Object.assign(document.createElement("span"), {textContent: `Author: ${author.name}`}),
                 shape: "dot",
                 size: 18
             }))
@@ -144,7 +150,7 @@ async function loadGraph() {
             }
         };
 
-        const network = new vis.Network(
+        const network = collaborationNetwork = new vis.Network(
             graph,
             networkData,
             options
@@ -181,18 +187,8 @@ async function loadAnalytics(type) {
     result.innerHTML = "Loading analytics...";
 
     try {
-        const response = await fetch(`/api/analytics/${type}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-            result.innerHTML = "Error loading analytics.";
-            return;
-        }
-
-        result.innerHTML = `
-            <h3>${type.replaceAll("-", " ")}</h3>
-            <pre>${JSON.stringify(data, null, 2)}</pre>
-        `;
+        const data = await readApi(`/api/analytics/${type}`);
+        showResults(result, type.replaceAll("-", " "), data);
 
     } catch (error) {
         result.innerHTML = "Error connecting to analytics API.";
@@ -207,6 +203,7 @@ async function loadAnalytics(type) {
 
 let crudToken = null;
 let editingRecordId = null;
+let crudViewVersion = 0;
 
 const crudConfig = {
     authors: {
@@ -261,12 +258,11 @@ async function crudRequest(url, options = {}) {
 
     if (!response.ok) {
         if (response.status === 401) {
-            crudToken = null;
-            renderCrudLogin();
-
-            throw new Error(
-                "Your session has expired or your login details are incorrect. Please log in again."
-            );
+            if (url === "/api/auth/login") {
+                throw new Error("Incorrect email or password. Please try again.");
+            }
+            clearCrudSession();
+            throw new Error("Your session has expired. Please log in again.");
         }
 
         if (response.status === 400 || response.status === 422) {
@@ -308,6 +304,33 @@ async function crudRequest(url, options = {}) {
 }
 
 
+function clearCrudSession() {
+    crudToken = null;
+    editingRecordId = null;
+    crudViewVersion++;
+    document.getElementById("crudFormContainer").replaceChildren();
+    document.getElementById("crudRecords").textContent = "Please log in to manage records.";
+    renderCrudLogin();
+}
+
+function requireCrudLogin() {
+    if (crudToken) return true;
+    showCrudMessage("Please log in to manage records.", true);
+    document.getElementById("crudEmail")?.focus();
+    return false;
+}
+
+// Fetch every page so records and relationship choices are never silently omitted.
+async function allCrudRecords(endpoint) {
+    const records = [];
+    for (let page = 1; ; page++) {
+        const data = await crudRequest(`${endpoint}?page=${page}&limit=100`);
+        const batch = data.results || [];
+        records.push(...batch);
+        if (!batch.length || records.length >= data.total) return records;
+    }
+}
+
 // Create the login area dynamically.
 // No credentials or tokens are saved in localStorage.
 function renderCrudLogin() {
@@ -337,11 +360,7 @@ function renderCrudLogin() {
         logoutButton.type = "button";
         logoutButton.textContent = "Logout";
         logoutButton.addEventListener("click", () => {
-            crudToken = null;
-            editingRecordId = null;
-            document.getElementById("crudFormContainer").replaceChildren();
-            document.getElementById("crudRecords").textContent =
-                "Please log in to manage records.";
+            clearCrudSession();
             showCrudMessage("You have logged out.");
             renderCrudLogin();
         });
@@ -426,14 +445,14 @@ function addCrudField(form, labelText, id, type = "text", required = true) {
 
 // Populate a dropdown from an API endpoint
 async function fillCrudDropdown(select, endpoint, placeholder, valueField, labelField) {
-    const data = await crudRequest(endpoint);
-    const records = data.results || [];
+    const records = await allCrudRecords(endpoint);
 
     select.replaceChildren();
 
     const firstOption = document.createElement("option");
     firstOption.value = "";
     firstOption.textContent = placeholder;
+    firstOption.disabled = true;
     select.appendChild(firstOption);
 
     records.forEach((record) => {
@@ -448,6 +467,16 @@ async function fillCrudDropdown(select, endpoint, placeholder, valueField, label
 
 // Build the correct form for the selected record type
 async function renderCrudForm(record = null) {
+    if (!requireCrudLogin()) return;
+    try {
+        await buildCrudForm(record);
+    } catch (error) {
+        showCrudMessage(error.message, true);
+    }
+}
+
+async function buildCrudForm(record = null) {
+    const version = ++crudViewVersion;
     const type = document.getElementById("crudEntity").value;
     const container = document.getElementById("crudFormContainer");
 
@@ -556,10 +585,13 @@ async function renderCrudForm(record = null) {
     });
 
     form.append(submitButton, cancelButton);
+    if (version !== crudViewVersion || !crudToken) return;
     container.append(heading, form);
 
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (!requireCrudLogin() || submitButton.disabled) return;
+        submitButton.disabled = true;
 
         const payload = {};
 
@@ -601,12 +633,15 @@ async function renderCrudForm(record = null) {
             await loadRecords();
         } catch (error) {
             showCrudMessage(error.message, true);
+        } finally {
+            submitButton.disabled = false;
         }
     });
 }
 
 // Read and display records
 async function loadRecords() {
+    const version = crudViewVersion;
     const type = document.getElementById("crudEntity").value;
     const recordsBox = document.getElementById("crudRecords");
 
@@ -618,8 +653,8 @@ async function loadRecords() {
     try {
         showCrudMessage("Loading records...");
 
-        const data = await crudRequest(crudConfig[type].endpoint);
-        const records = data.results || [];
+        const records = await allCrudRecords(crudConfig[type].endpoint);
+        if (version !== crudViewVersion || !crudToken) return;
 
         recordsBox.replaceChildren();
 
@@ -711,5 +746,12 @@ async function deleteRecord(id) {
 document.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById("crudSection")) {
         renderCrudLogin();
+        document.getElementById("crudEntity").addEventListener("change", () => {
+            crudViewVersion++;
+            editingRecordId = null;
+            document.getElementById("crudFormContainer").replaceChildren();
+            document.getElementById("crudRecords").replaceChildren();
+            if (crudToken) loadRecords();
+        });
     }
 });

@@ -1,7 +1,9 @@
+const asyncHandler = require("../middleware/asyncHandler");
 const express = require("express");
 const { mongoose } = require("../config/mongo");
 const Author = require("../models/Author");
 const Publication = require("../models/Publication");
+const Institution = require("../models/Institution");
 const { runCypher } = require("../config/neo4j");
 const { requireAuth } = require("./auth");
 
@@ -9,8 +11,11 @@ const router = express.Router();
 
 // CREATE
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, asyncHandler(async (req, res) => {
   try {
+    if (!await Institution.exists({ _id: req.body.institutionId })) {
+      return res.status(400).json({ error: "Select an existing institution." });
+    }
     const author = await Author.create(req.body);
 
     await runCypher(
@@ -74,11 +79,11 @@ router.post("/", requireAuth, async (req, res) => {
       error: "Unable to create the author right now. Please try again."
     });
   }
-});
+}));
 
 
 // READ (list)
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const { q, page = 1, limit = 20 } = req.query;
   const filter = q ? { name: new RegExp(q, "i") } : {};
   const docs = await Author.find(filter)
@@ -88,18 +93,21 @@ router.get("/", async (req, res) => {
     .limit(Number(limit));
   const total = await Author.countDocuments(filter);
   res.json({ total, page: Number(page), results: docs });
-});
+}));
 
 // READ (single)
-router.get("/:id", async (req, res) => {
+router.get("/:id", asyncHandler(async (req, res) => {
   const author = await Author.findById(req.params.id).populate("institutionId", "name country");
   if (!author) return res.status(404).json({ error: "Author not found" });
   res.json(author);
-});
+}));
 
 // UPDATE
-router.put("/:id", requireAuth, async (req, res) => {
+router.put("/:id", requireAuth, asyncHandler(async (req, res) => {
   try {
+    if (req.body.institutionId !== undefined && !await Institution.exists({ _id: req.body.institutionId })) {
+      return res.status(400).json({ error: "Select an existing institution." });
+    }
     const author = await Author.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true,
@@ -111,57 +119,36 @@ router.put("/:id", requireAuth, async (req, res) => {
       name: author.name,
     });
 
+    await runCypher(`MATCH (a:Author {authorId: $authorId})
+      OPTIONAL MATCH (a)-[r:AFFILIATED_WITH]->(:Institution) DELETE r
+      WITH a MATCH (i:Institution {institutionId: $institutionId})
+      MERGE (a)-[:AFFILIATED_WITH]->(i)`,
+    { authorId: author._id.toString(), institutionId: author.institutionId.toString() });
     res.json(author);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-});
+}));
 
-/**
- * DELETE — demonstrates a MongoDB multi-document ACID transaction.
- * Deleting an author must (a) remove the author document and
- * (b) pull that author out of every publication's authorIds array.
- * Both writes are wrapped in a session so they commit or roll back together.
- * Requires MongoDB running as a replica set (Atlas clusters are by default).
- */
-
-/**
- * DELETE
- * Works with standalone MongoDB.
- * Removes the author, removes their references from publications,
- * and deletes the corresponding Neo4j author node.
- */
-router.delete("/:id", requireAuth, async (req, res) => {
+// MongoDB document deletion and reference cleanup commit together.
+router.delete("/:id", requireAuth, asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+  let author;
   try {
-    const author = await Author.findById(req.params.id);
-
-    if (!author) {
-      return res.status(404).json({ error: "Author not found" });
-    }
-
-    // Remove this author from publication authorIds arrays first.
-    await Publication.updateMany(
-      { authorIds: author._id },
-      { $pull: { authorIds: author._id } }
-    );
-
-    // Delete the author document from MongoDB.
-    await Author.findByIdAndDelete(author._id);
-
-    // Remove the corresponding author node and its relationships.
-    await runCypher(
-      `MATCH (a:Author {authorId: $authorId}) DETACH DELETE a`,
-      { authorId: author._id.toString() }
-    );
-
-    res.json({ deleted: true, id: req.params.id });
-  } catch (err) {
-    console.error("Author delete failed:", err);
-    res.status(500).json({
-      error: "Could not delete the author. Please try again."
+    await session.withTransaction(async () => {
+      author = await Author.findByIdAndDelete(req.params.id).session(session);
+      if (author) await Publication.updateMany(
+        { authorIds: author._id }, { $pull: { authorIds: author._id } }
+      ).session(session);
     });
+    if (!author) return res.status(404).json({ error: "Author not found" });
+    await runCypher('MATCH (a:Author {authorId: $authorId}) DETACH DELETE a',
+      { authorId: author._id.toString() });
+    res.json({ deleted: true, id: req.params.id });
+  } finally {
+    await session.endSession();
   }
-});
+}));
 
 
 module.exports = router;
